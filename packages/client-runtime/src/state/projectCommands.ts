@@ -92,6 +92,10 @@ export function createProjectEnvironmentAtoms<R, E>(
       scheduler: projectScheduler,
       concurrency: projectConcurrency,
     }),
+    language: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:projects:language",
+      tag: WS_METHODS.projectsLanguage,
+    }),
     writeFile: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:projects:write-file",
       tag: WS_METHODS.projectsWriteFile,

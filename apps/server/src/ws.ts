@@ -2,6 +2,8 @@ import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
 } from "@t3tools/shared/usageLimits";
+import { LanguageServiceError } from "@t3tools/contracts";
+import { WorkspaceLanguageService } from "./workspace/WorkspaceLanguageService.ts";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -465,11 +467,14 @@ function readClientAnalyticsProps(request: HttpServerRequest.HttpServerRequest) 
   };
 }
 
+const isLanguageServiceError = Schema.is(LanguageServiceError);
+
 const makeWsRpcLayer = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientOrigin: OrchestrationClientOrigin,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
+  workspaceLanguage: WorkspaceLanguageService,
 ) =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
@@ -2301,6 +2306,21 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "workspace" },
           ),
+        [WS_METHODS.projectsLanguage]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsLanguage,
+            Effect.tryPromise({
+              try: () => workspaceLanguage.request(input),
+              catch: (error) =>
+                isLanguageServiceError(error)
+                  ? error
+                  : new LanguageServiceError({
+                      message: error instanceof Error ? error.message : String(error),
+                      resync: false,
+                    }),
+            }),
+            { "rpc.aggregate": "workspace" },
+          ),
         [WS_METHODS.projectsReadFile]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectsReadFile,
@@ -2951,6 +2971,10 @@ export const websocketRpcRouteLayer = Layer.unwrap(
         const clientAnalyticsProps = readClientAnalyticsProps(request);
         yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
         yield* analytics.record("client.connected", clientAnalyticsProps);
+        const workspaceLanguage = yield* Effect.acquireRelease(
+          Effect.sync(() => new WorkspaceLanguageService()),
+          (service) => Effect.sync(() => service.dispose()),
+        );
         const rpcWebSocketHttpEffect = yield* RpcServer.toHttpEffectWebsocket(WsRpcGroup, {
           disableTracing: true,
         }).pipe(
@@ -2960,6 +2984,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               clientOrigin,
               clientAnalyticsProps,
               previewAutomationBroker,
+              workspaceLanguage,
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               Layer.provide(AgentSessionScanner.layer),

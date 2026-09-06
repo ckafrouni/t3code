@@ -11,7 +11,8 @@
  * as Node resolves it from the emitted bundle. Keeping both consumers on one
  * list prevents packaging from drifting away from the bundle boundary.
  *
- * Entries are matched as prefixes (`id.startsWith(prefix)`), so they also cover
+ * Entries match prefixes; a trailing slash limits a match to a package and its
+ * subpaths. Other prefixes also cover
  * a package's platform-specific siblings — `node-gyp-build` covers
  * `node-gyp-build-optional-packages`, `@yuuang/` covers every `ffi-rs-*` binding.
  */
@@ -26,6 +27,8 @@
  * enforced by a test, not by inspection.
  */
 export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
+  // tsserver runs as a child process and loads its standard libraries from disk.
+  "typescript/",
   "node-pty",
   "ffi-rs",
   "@yuuang/",
@@ -69,7 +72,9 @@ export const CLI_EXTERNAL_PACKAGE_PREFIXES = [
 ] as const;
 
 export function isRuntimeExternalCliDependency(id: string): boolean {
-  return CLI_RUNTIME_EXTERNAL_PREFIXES.some((prefix) => id.startsWith(prefix));
+  return CLI_RUNTIME_EXTERNAL_PREFIXES.some(
+    (prefix) => id === prefix.replace(/\/$/, "") || id.startsWith(prefix),
+  );
 }
 
 /**
@@ -83,7 +88,9 @@ export function isRuntimeExternalCliDependency(id: string): boolean {
  * inlined while node-pty (a declared dependency) stayed external.
  */
 export function isExternalCliDependency(id: string): boolean {
-  return CLI_EXTERNAL_PACKAGE_PREFIXES.some((prefix) => id.startsWith(prefix));
+  return CLI_EXTERNAL_PACKAGE_PREFIXES.some(
+    (prefix) => id === prefix.replace(/\/$/, "") || id.startsWith(prefix),
+  );
 }
 
 /** True when the CLI bundle should inline `id` rather than leave it external. */

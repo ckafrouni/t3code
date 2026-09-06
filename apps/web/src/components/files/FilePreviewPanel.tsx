@@ -1,11 +1,13 @@
 import { Spinner } from "~/components/ui/spinner";
 import type {
   ChatFileAttachment,
+  CodeLocation,
   EditorId,
   EnvironmentId,
   ResolvedKeybindingsConfig,
   ScopedThreadRef,
 } from "@t3tools/contracts";
+import { codeLanguageForPath } from "@t3tools/contracts";
 import {
   isWorkspaceImagePreviewPath,
   isWorkspaceVideoPreviewPath,
@@ -21,7 +23,7 @@ import {
 import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
 import { Code2, Eye, FolderTree, Globe2 } from "lucide-react";
 import * as Schema from "effect/Schema";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { isBrowserPreviewFile, openFileInPreview } from "~/browser/openFileInPreview";
 import { useAssetUrlRefresh, useAssetUrlState } from "~/assets/assetUrls";
@@ -78,6 +80,10 @@ import {
   setProjectFileQueryData,
   useProjectFileQuery,
 } from "./projectFilesQueryState";
+
+import type { FileCodeNavigation } from "./FileCodeIntelligence";
+
+const FileCodeIntelligence = lazy(() => import("./FileCodeIntelligence"));
 
 interface FilePreviewPanelProps {
   environmentId: EnvironmentId;
@@ -594,6 +600,7 @@ function useFileLineReveal(
 }
 
 interface EditableFileSurfaceProps {
+  codeNavigation?: FileCodeNavigation;
   environmentId: EnvironmentId;
   cwd: string;
   relativePath: string;
@@ -622,7 +629,9 @@ function EditableFileSurface({
   wordWrap,
   onPostRender,
   onPendingChange,
+  codeNavigation,
 }: EditableFileSurfaceProps) {
+  const [editorAttached, setEditorAttached] = useState(false);
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
   const [lineAnnotations, setLineAnnotations] = useState<FileCommentLineAnnotation[]>([]);
@@ -646,6 +655,7 @@ function EditableFileSurface({
   const editor = useMemo(
     () =>
       new Editor<FileCommentAnnotationGroup>({
+        onAttach: () => setEditorAttached(true),
         persistState: true,
         persistStateStorage: "inMemory",
         onChange: (file, nextLineAnnotations) => {
@@ -791,7 +801,7 @@ function EditableFileSurface({
     return installFileEditorDismissal({
       root,
       editor,
-      isBlocked: () => hasOpenCommentForm,
+      isBlocked: () => hasOpenCommentForm || root.querySelector("[data-file-code-popup]") !== null,
       onDismiss: () => setSelectedRange(null),
     });
   }, [editor, hasOpenCommentForm, setSelectedRange]);
@@ -826,7 +836,24 @@ function EditableFileSurface({
 
   return (
     <EditProvider editor={editor}>
-      <div ref={surfaceRef} className="flex min-h-0 flex-1">
+      <div
+        ref={surfaceRef}
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
+        data-file-code-editor={codeNavigation ? relativePath : undefined}
+      >
+        {codeNavigation && editorAttached && (
+          <Suspense fallback={null}>
+            <FileCodeIntelligence
+              {...codeNavigation}
+              editor={editor}
+              root={surfaceRef}
+              environmentId={environmentId}
+              cwd={cwd}
+              relativePath={relativePath}
+              contents={contents}
+            />
+          </Suspense>
+        )}
         <Virtualizer
           className="file-preview-virtualizer min-h-0 flex-1 overflow-auto"
           config={{
@@ -969,6 +996,49 @@ export default function FilePreviewPanel({
   selectedFilePending,
   workspaceMutationId,
 }: FilePreviewPanelProps) {
+  const [codeHistory, setCodeHistory] = useState<{
+    entries: CodeLocation[];
+    index: number;
+    id: number;
+  }>({ entries: [], index: -1, id: 0 });
+  const navigateCode = useCallback(
+    (target: CodeLocation, source: CodeLocation) => {
+      setCodeHistory((history) => {
+        const previous = history.index < 0 ? [] : history.entries.slice(0, history.index);
+        return {
+          entries: [...previous, source, target],
+          index: previous.length + 1,
+          id: history.id + 1,
+        };
+      });
+      onOpenFile(target.path);
+    },
+    [onOpenFile],
+  );
+  const navigateCodeHistory = (direction: -1 | 1) => {
+    const target = codeHistory.entries[codeHistory.index + direction];
+    if (!target) return;
+    setCodeHistory((history) => ({
+      ...history,
+      index: history.index + direction,
+      id: history.id + 1,
+    }));
+    onOpenFile(target.path);
+  };
+  const codeDestination = codeHistory.entries[codeHistory.index];
+  const codeReveal = useMemo(
+    () =>
+      revealLine !== null
+        ? { line: revealLine, column: 1, id: revealRequestId }
+        : codeDestination?.path === relativePath
+          ? {
+              line: codeDestination.range.start.line,
+              column: codeDestination.range.start.column,
+              id: codeHistory.id,
+            }
+          : null,
+    [codeDestination, codeHistory.id, relativePath, revealLine, revealRequestId],
+  );
   const { resolvedTheme } = useTheme();
   const wordWrap = useClientSettings((settings) => settings.wordWrap);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -1040,7 +1110,11 @@ export default function FilePreviewPanel({
     isBrowserPreviewFile(relativePath);
   const absolutePath =
     relativePath && attachment === undefined ? resolvePathLinkTarget(relativePath, cwd) : null;
-  const onFilePostRender = useFileLineReveal(relativePath, revealLine, revealRequestId);
+  const onFilePostRender = useFileLineReveal(
+    relativePath,
+    codeReveal?.line ?? revealLine,
+    codeReveal?.id ?? revealRequestId,
+  );
   useWorkspaceMutationRefresh({
     enabled:
       attachment === undefined &&
@@ -1104,6 +1178,24 @@ export default function FilePreviewPanel({
           className="flex h-10 min-h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3 in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent"
           data-surface-subheader
         >
+          {isHostFile && codeHistory.entries.length > 0 ? (
+            <div className="flex items-center gap-1">
+              <button
+                className="rounded px-2 py-1 text-xs hover:bg-accent disabled:opacity-40"
+                disabled={codeHistory.index <= 0}
+                onClick={() => navigateCodeHistory(-1)}
+              >
+                Back
+              </button>
+              <button
+                className="rounded px-2 py-1 text-xs hover:bg-accent disabled:opacity-40"
+                disabled={codeHistory.index >= codeHistory.entries.length - 1}
+                onClick={() => navigateCodeHistory(1)}
+              >
+                Forward
+              </button>
+            </div>
+          ) : null}
           {attachment ? (
             <div className="flex min-w-0 flex-1 items-center gap-1.5 text-xs">
               <PierreEntryIcon
@@ -1319,10 +1411,24 @@ export default function FilePreviewPanel({
                   composerDraftTarget={composerDraftTarget}
                   contents={file.data.contents}
                   resolvedTheme={resolvedTheme}
-                  revealRequestId={revealRequestId}
+                  revealRequestId={codeReveal?.id ?? revealRequestId}
                   wordWrap={wordWrap}
                   onPostRender={onFilePostRender}
                   onPendingChange={onPendingChange}
+                  {...(codeLanguageForPath(relativePath)
+                    ? {
+                        codeNavigation: {
+                          reveal: codeReveal,
+                          workspaceMutationId,
+                          onNavigate: navigateCode,
+                          onBack: codeHistory.index > 0 ? () => navigateCodeHistory(-1) : undefined,
+                          onForward:
+                            codeHistory.index < codeHistory.entries.length - 1
+                              ? () => navigateCodeHistory(1)
+                              : undefined,
+                        },
+                      }
+                    : {})}
                 />
               </DiffWorkerPoolProvider>
             )

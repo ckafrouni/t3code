@@ -136,3 +136,31 @@ automatically. HTML previews cannot access your T3 Code session.
 
 On mobile, select a PDF attachment or link to open it. iOS uses the native viewer;
 Android opens the system chooser.
+
+## Code intelligence in the file editor
+
+On web and desktop, open a supported file from the file browser or a file link
+to get completion suggestions, documentation on hover, navigation, and error
+underlines. Features depend on the language and use the project on the connected
+environment, including its dependencies and configuration. TypeScript, JavaScript, and Rust
+also provide signature help with **Cmd+Shift+Space** (macOS) or **Ctrl+Shift+Space**.
+
+Press **Ctrl+Space** for suggestions, **F12** to go to a definition, or
+**Shift+F12** to find references. Use the editor’s **Definition** and
+**References** actions if your system reserves those shortcuts. Back and Forward
+return through code navigation. **Problems** lists errors in the current file,
+and **Format** formats it. Hold **Cmd** on macOS or **Ctrl** on Windows/Linux
+to underline a symbol, then click it to go to its definition. Edits save automatically.
+
+Use the line gutter to add an inline review comment to the agent’s composer.
+TypeScript, JavaScript, Rust, Protobuf, JSON, and JSONC workspace files support
+language features; external files remain read-only. JSON completion and validation
+use the file’s `$schema`; definition navigation resolves local `$ref` pointers,
+and references find pointers within the current file.
+
+TypeScript, JavaScript, and JSON work without extra tools. Rust requires
+`rust-analyzer` and the Rust source component on the connected environment
+(`rustup component add rust-analyzer rust-src`). Protobuf requires a recent
+[Buf CLI](https://buf.build/docs/installation/) with `buf lsp serve`. Install these
+on the machine running T3, including when connecting remotely. If a tool is missing,
+the editor stays usable and offers **Retry** after installation.

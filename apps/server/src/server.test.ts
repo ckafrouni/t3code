@@ -6734,6 +6734,40 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
+  it.effect("routes websocket rpc projects.language with unsaved buffers", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-language-" });
+      yield* fs.writeFileString(path.join(cwd, "main.ts"), "const value: number = 1;");
+      yield* buildAppUnderTest();
+      const wsUrl = yield* getWsServerUrl("/ws");
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const input = { cwd, relativePath: "main.ts", sessionId: "rpc-editor", version: 1 };
+            const result = yield* client[WS_METHODS.projectsLanguage]({
+              ...input,
+              operation: "diagnostics",
+              update: { _tag: "open", contents: 'const value: number = "wrong";' },
+            });
+            assert.equal(result._tag, "diagnostics");
+            if (result._tag === "diagnostics")
+              assert.isTrue(result.items.some((item) => item.code === 2322));
+            assert.equal(
+              yield* fs.readFileString(path.join(cwd, "main.ts")),
+              "const value: number = 1;",
+            );
+            assert.deepEqual(
+              yield* client[WS_METHODS.projectsLanguage]({ ...input, operation: "close" }),
+              { _tag: "closed" },
+            );
+          }),
+        ),
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
   it.effect("routes websocket rpc projects.listEntries and projects.readFile", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
