@@ -1,3 +1,4 @@
+import { readNativeFileDrag } from "~/lib/nativeFileDragState";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 
 /**
@@ -16,7 +17,10 @@ export function composerMentionFromTreePath(treePath: string): string | null {
 }
 
 export function dataTransferHasComposerMention(types: ReadonlyArray<string>): boolean {
-  return types.includes(COMPOSER_MENTION_DRAG_TYPE);
+  return (
+    types.includes(COMPOSER_MENTION_DRAG_TYPE) ||
+    (readNativeFileDrag() !== null && types.includes("Files"))
+  );
 }
 
 export interface ComposerMentionDragTransfer {
@@ -78,7 +82,7 @@ export function makeComposerMentionDragHandlers(
       }
       // The tree constrains its drags to effectAllowed "move"; naming any
       // other effect makes the browser cancel the drop without firing it.
-      event.dataTransfer.dropEffect = "move";
+      event.dataTransfer.dropEffect = readNativeFileDrag() ? "copy" : "move";
       host.setDragActive(true);
     },
     onDrop(event) {
@@ -86,7 +90,8 @@ export function makeComposerMentionDragHandlers(
         return;
       }
       host.setDragActive(false);
-      const mention = event.dataTransfer.getData(COMPOSER_MENTION_DRAG_TYPE);
+      const mention =
+        readNativeFileDrag()?.mention ?? event.dataTransfer.getData(COMPOSER_MENTION_DRAG_TYPE);
       if (mention.length === 0) {
         return;
       }

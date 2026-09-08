@@ -1,3 +1,15 @@
+import { WorkspaceExportInput, WorkspaceExportResult } from "./workspaceTransfers.ts";
+import {
+  WorkspaceUploadInput,
+  WorkspaceUploadResult,
+  WorkspaceTransferError,
+} from "./workspaceTransfers.ts";
+import {
+  PortForwardInput,
+  PortForwardResult,
+  PortForwardSnapshot,
+  PortForwardError,
+} from "./portForwarding.ts";
 import { LanguageRequest, LanguageResult, LanguageServiceError } from "./language.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
@@ -255,6 +267,9 @@ export const WS_METHODS = {
   filesystemBrowse: "filesystem.browse",
   agentSessionsScan: "agentSessions.scan",
   agentSessionsImport: "agentSessions.import",
+  workspaceExportPrepare: "workspace.exportPrepare",
+  workspaceUploadPrepare: "workspace.uploadPrepare",
+  workspaceUploadRefresh: "workspace.uploadRefresh",
   assetsCreateUrl: "assets.createUrl",
   attachmentsCreateUploadUrl: "attachments.createUploadUrl",
   attachmentsDelete: "attachments.delete",
@@ -301,6 +316,8 @@ export const WS_METHODS = {
   terminalClose: "terminal.close",
 
   // Preview methods
+  previewForwardPort: "preview.forwardPort",
+  previewForwardedPorts: "preview.forwardedPorts",
   previewOpen: "preview.open",
   previewNavigate: "preview.navigate",
   previewResize: "preview.resize",
@@ -847,6 +864,24 @@ const WsAgentSessionsImportRpc = Rpc.make(WS_METHODS.agentSessionsImport, {
   ]),
 });
 
+const WsWorkspaceExportPrepareRpc = Rpc.make(WS_METHODS.workspaceExportPrepare, {
+  payload: WorkspaceExportInput,
+  success: WorkspaceExportResult,
+  error: Schema.Union([WorkspaceTransferError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspaceUploadRefreshRpc = Rpc.make(WS_METHODS.workspaceUploadRefresh, {
+  payload: ProjectListEntriesInput,
+  success: Schema.Void,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsWorkspaceUploadPrepareRpc = Rpc.make(WS_METHODS.workspaceUploadPrepare, {
+  payload: WorkspaceUploadInput,
+  success: WorkspaceUploadResult,
+  error: Schema.Union([WorkspaceTransferError, EnvironmentAuthorizationError]),
+});
+
 const WsAssetsCreateUrlRpc = Rpc.make(WS_METHODS.assetsCreateUrl, {
   payload: AssetCreateUrlInput,
   success: AssetCreateUrlResult,
@@ -996,6 +1031,18 @@ const WsTerminalRestartRpc = Rpc.make(WS_METHODS.terminalRestart, {
 const WsTerminalCloseRpc = Rpc.make(WS_METHODS.terminalClose, {
   payload: TerminalCloseInput,
   error: Schema.Union([TerminalError, EnvironmentAuthorizationError]),
+});
+
+const WsPreviewForwardPortRpc = Rpc.make(WS_METHODS.previewForwardPort, {
+  payload: PortForwardInput,
+  success: PortForwardResult,
+  error: Schema.Union([PortForwardError, EnvironmentAuthorizationError]),
+});
+const WsPreviewForwardedPortsRpc = Rpc.make(WS_METHODS.previewForwardedPorts, {
+  payload: Schema.Struct({}),
+  success: PortForwardSnapshot,
+  error: EnvironmentAuthorizationError,
+  stream: true,
 });
 
 const WsPreviewOpenRpc = Rpc.make(WS_METHODS.previewOpen, {
@@ -1260,6 +1307,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsFilesystemBrowseRpc,
   WsAgentSessionsScanRpc,
   WsAgentSessionsImportRpc,
+  WsWorkspaceExportPrepareRpc,
+  WsWorkspaceUploadPrepareRpc,
+  WsWorkspaceUploadRefreshRpc,
   WsAssetsCreateUrlRpc,
   WsAttachmentsCreateUploadUrlRpc,
   WsAttachmentsDeleteRpc,
@@ -1287,6 +1337,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsTerminalCloseRpc,
   WsSubscribeTerminalEventsRpc,
   WsSubscribeTerminalMetadataRpc,
+  WsPreviewForwardPortRpc,
+  WsPreviewForwardedPortsRpc,
   WsPreviewOpenRpc,
   WsPreviewNavigateRpc,
   WsPreviewResizeRpc,

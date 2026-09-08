@@ -1,3 +1,6 @@
+import { useNativeFileDrag } from "./useNativeFileDrag";
+import { useWorkspaceFileDrop } from "./useWorkspaceFileDrop";
+import { WorkspaceTransferProgress } from "./WorkspaceTransferProgress";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import type {
   ContextMenuItem as TreeContextMenuItem,
@@ -35,6 +38,7 @@ interface FileBrowserPanelProps {
   /** Bumped when the same path should be revealed again (e.g. re-opened from search). */
   selectedPathRevealId: number;
   onOpenFile: (relativePath: string) => void;
+  onDownloadFile: (relativePath: string) => Promise<void>;
   onRefreshSelectedFile?: () => void;
   workspaceMutationId: string | null;
 }
@@ -99,6 +103,7 @@ export default function FileBrowserPanel({
   selectedPath,
   selectedPathRevealId,
   onOpenFile,
+  onDownloadFile,
   onRefreshSelectedFile,
   workspaceMutationId,
 }: FileBrowserPanelProps) {
@@ -155,9 +160,16 @@ export default function FileBrowserPanel({
         [
           { id: "copy-mention", label: "Copy mention" },
           { id: "add-to-chat", label: "Add to chat" },
+          ...(entryKinds.get(relativePath) === "file"
+            ? [{ id: "download", label: "Download" }]
+            : []),
         ],
         position,
       );
+      if (clicked === "download") {
+        await onDownloadFile(relativePath);
+        return;
+      }
       if (clicked === "copy-mention") {
         try {
           await writeTextToClipboard(mention);
@@ -348,6 +360,20 @@ export default function FileBrowserPanel({
   // The capture phase runs before the tree's own dragstart handler selects
   // the dragged row, so the drag flag is up before that selection emits.
   const panelRef = useRef<HTMLDivElement | null>(null);
+  useNativeFileDrag({
+    panelRef,
+    environmentId,
+    cwd,
+    getSelection: () => model.getSelectedPaths(),
+    onDragEnd: () => dragMention.handleDragEnd(),
+  });
+  const dropTarget = useWorkspaceFileDrop({
+    panelRef,
+    environmentId,
+    cwd,
+    projectName,
+    refresh: handleRefresh,
+  });
   useEffect(() => {
     treeModelRef.current = model;
   }, [model]);
@@ -372,6 +398,14 @@ export default function FileBrowserPanel({
       className="flex min-h-0 flex-1 flex-col bg-background"
       data-file-browser-panel={`${environmentId}:${cwd}`}
     >
+      {dropTarget !== null ? (
+        <div
+          className="shrink-0 border-b border-primary/30 bg-primary/10 px-3 py-2 text-xs"
+          role="status"
+        >
+          Copy files into {dropTarget || projectName}
+        </div>
+      ) : null}
       <div
         className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-1 in-data-[preview-panel-mode=inline]:h-9 in-data-[preview-panel-mode=inline]:min-h-9 in-data-[preview-panel-mode=inline]:border-b-transparent"
         data-surface-subheader
@@ -421,6 +455,7 @@ export default function FileBrowserPanel({
           style={pierreTreeStyle(resolvedTheme)}
         />
       )}
+      <WorkspaceTransferProgress />
     </div>
   );
 }

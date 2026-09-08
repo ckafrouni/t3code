@@ -5473,6 +5473,43 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("serves absolute host media without a local thread and rejects relative media", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-host-media-" });
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const threadId = ThreadId.make("thread-on-another-environment");
+
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            for (const [name, mimeType] of [
+              ["screenshot.png", "image/png"],
+              ["recording.mp4", "video/mp4"],
+            ] as const) {
+              const filePath = path.join(directory, name);
+              yield* fileSystem.writeFileString(filePath, "host media bytes");
+              const issued = yield* client[WS_METHODS.assetsCreateUrl]({
+                resource: { _tag: "media-file", threadId, path: filePath },
+              });
+              const response = yield* HttpClient.get(issued.relativeUrl);
+              assert.equal(response.status, 200);
+              assert.equal(response.headers["content-type"], mimeType);
+              assert.equal(yield* response.text, "host media bytes");
+
+              const error = yield* client[WS_METHODS.assetsCreateUrl]({
+                resource: { _tag: "media-file", threadId, path: name },
+              }).pipe(Effect.flip);
+              assert.equal(error._tag, "AssetWorkspaceContextNotFoundError");
+            }
+          }),
+        ),
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("uploads image bytes through a signed URL issued by websocket rpc", () =>
     Effect.gen(function* () {
       const config = yield* buildAppUnderTest();
@@ -5660,6 +5697,42 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.strictEqual(error.message, `Failed to upload feedback for thread ${threadId}.`);
         assert.isDefined(error.cause);
       }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("shares local port forwards across websocket sessions", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const first = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.previewForwardPort]({ _tag: "start", port: 3000, protocol: "http" }),
+        ),
+      );
+      assert.equal(first.forwards.length, 1);
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const snapshot = yield* client[WS_METHODS.previewForwardedPorts]({}).pipe(
+              Stream.runHead,
+              Effect.map(Option.getOrThrow),
+            );
+            assert.deepEqual(snapshot.forwards, first.forwards);
+            const opened = yield* client[WS_METHODS.previewForwardPort]({
+              _tag: "open",
+              port: 3000,
+            });
+            assert.include(opened.openUrl, "/__t3_preview/open#");
+            assert.notProperty(snapshot, "openUrl");
+            assert.equal(new URL(snapshot.forwards[0]!.previewUrl).hash, "");
+            const stopped = yield* client[WS_METHODS.previewForwardPort]({
+              _tag: "stop",
+              port: 3000,
+            });
+            assert.deepEqual(stopped.forwards, []);
+          }),
+        ),
+      );
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

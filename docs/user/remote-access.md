@@ -186,3 +186,16 @@ Include the diagnostic message and trace ID when reporting a persistent failure.
 
 For a connection that still fails after linking, check the date and time on both
 devices. For server version warnings, follow [Updating T3 Code](./updating.md).
+
+## Local dev-server previews
+
+In the web or desktop app, open **Ports** in a conversation header. Choose a
+detected dev server or enter its port and protocol, then select **Forward** and
+**Open**. Preview access requires your T3 session; opening it creates a one-time
+link. Select **Stop** to revoke preview access and close active connections.
+
+This version is a local preview: the URL opens on the machine running T3, and
+forwards are cleared when T3 restarts. It does not yet expose dev servers through
+T3 Connect or provide access from another device. HTTPS targets require a trusted
+certificate. Relative URLs and WebSocket hot reload work through the preview;
+apps with hard-coded localhost URLs may need their public URL configuration updated.

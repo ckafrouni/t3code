@@ -1,3 +1,9 @@
+import { WORKSPACE_EXPORT_ROUTE_PREFIX, readWorkspaceExport } from "./assets/WorkspaceExports.ts";
+import {
+  WORKSPACE_UPLOAD_ROUTE_PREFIX,
+  validateWorkspaceUpload,
+} from "./assets/WorkspaceUploads.ts";
+import { receiveUpload, TransferFailure } from "./assets/WorkspaceTransferStore.ts";
 import Mime from "@effect/platform-node/Mime";
 import {
   AuthOrchestrationOperateScope,
@@ -631,4 +637,57 @@ export const staticAndDevRouteLayer = Layer.unwrap(
   loadImmutableBuildAssets.pipe(
     Effect.map((assets) => HttpRouter.add("GET", "*", handleStaticAndDevRequest(assets))),
   ),
+);
+
+export const workspaceUploadRouteLayer = HttpRouter.add(
+  "POST",
+  `${WORKSPACE_UPLOAD_ROUTE_PREFIX}/*`,
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const url = HttpServerRequest.toURL(request);
+    if (Option.isNone(url)) return HttpServerResponse.text("Invalid upload URL.", { status: 400 });
+    const claims = yield* validateWorkspaceUpload(
+      url.value.pathname.slice(WORKSPACE_UPLOAD_ROUTE_PREFIX.length + 1),
+    );
+    if (!claims)
+      return HttpServerResponse.text("Upload expired. Retry the transfer.", { status: 401 });
+    const pull = yield* Stream.toPull(request.stream);
+    const bytes = yield* Stream.toAsyncIterableEffect(Stream.fromPull(Effect.succeed(pull)));
+    return yield* Effect.tryPromise({
+      try: (signal) => receiveUpload(claims.target, bytes, signal),
+      catch: (cause) =>
+        cause instanceof TransferFailure
+          ? cause
+          : new TransferFailure(500, "Could not save the uploaded file."),
+    }).pipe(
+      Effect.map((result) => HttpServerResponse.jsonUnsafe(result)),
+      Effect.catch((error) =>
+        Effect.succeed(HttpServerResponse.text(error.message, { status: error.status })),
+      ),
+    );
+  }),
+);
+
+export const workspaceExportRouteLayer = HttpRouter.add(
+  "GET",
+  `${WORKSPACE_EXPORT_ROUTE_PREFIX}/*`,
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest,
+      url = HttpServerRequest.toURL(request);
+    if (Option.isNone(url)) return HttpServerResponse.text("Invalid export URL.", { status: 400 });
+    return yield* readWorkspaceExport(
+      url.value.pathname.slice(WORKSPACE_EXPORT_ROUTE_PREFIX.length + 1),
+    ).pipe(
+      Effect.map((manifest) =>
+        manifest
+          ? HttpServerResponse.jsonUnsafe(manifest, {
+              headers: { "Cache-Control": "private, no-store" },
+            })
+          : HttpServerResponse.text("This transfer expired. Drag the file again.", { status: 401 }),
+      ),
+      Effect.catch((error) =>
+        Effect.succeed(HttpServerResponse.text(error.message, { status: 400 })),
+      ),
+    );
+  }),
 );

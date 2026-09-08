@@ -35,8 +35,11 @@ export * from "./review.ts";
 export * from "./browserImport.ts";
 export * from "./browserProfile.ts";
 export * from "./preview.ts";
+export * from "./portForwarding.ts";
 export * from "./previewAutomation.ts";
 export * from "./resourceTelemetry.ts";
 export * from "./usage.ts";
 export * from "./rpc.ts";
 export * from "./language.ts";
+
+export * from "./workspaceTransfers.ts";

@@ -29,6 +29,17 @@ export function createPreviewEnvironmentAtoms<R, E>(
       JSON.stringify([environmentId, input.threadId]),
   };
   return {
+    forwardedPorts: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:preview:forwarded-ports",
+      tag: WS_METHODS.previewForwardedPorts,
+      idleTtlMs: 0,
+    }),
+    forwardPort: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:preview:forward-port",
+      tag: WS_METHODS.previewForwardPort,
+      scheduler: lifecycleScheduler,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+    }),
     list: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:preview:list",
       tag: WS_METHODS.previewList,

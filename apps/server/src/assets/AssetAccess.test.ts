@@ -47,6 +47,67 @@ const testLayer = Layer.mergeAll(
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
 describe("AssetAccess", () => {
+  it.effect("downloads arbitrary workspace files with exact, attachment-only URLs", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-download-" });
+      for (const name of ["résumé final.docx", "report.html", "data.bin"]) {
+        const filePath = path.join(root, name);
+        yield* fs.writeFile(filePath, new Uint8Array([0, 255, 10, 42]));
+        const result = yield* issueAssetUrl({
+          resource: {
+            _tag: "workspace-file",
+            threadId: ThreadId.make("thread-1"),
+            path: name,
+            disposition: "attachment",
+          },
+          workspaceRoot: root,
+        });
+        const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+        const token = suffix.slice(0, suffix.indexOf("/"));
+        const asset = yield* resolveAsset(token, encodeURIComponent(name));
+        expect(asset).toEqual({
+          kind: "file",
+          path: yield* fs.realPath(filePath),
+          download: true,
+          fileName: name,
+        });
+        expect(Array.from(yield* fs.readFile(asset!.path))).toEqual([0, 255, 10, 42]);
+        expect(yield* resolveAsset(token, "other.docx")).toBeNull();
+        expect(yield* resolveAsset(token, `../${name}`)).toBeNull();
+        expect(yield* resolveAsset(`${token}tampered`, name)).toBeNull();
+        yield* fs.remove(filePath);
+        expect(yield* resolveAsset(token, encodeURIComponent(name))).toBeNull();
+      }
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("rejects directory downloads and paths or symlinks outside the workspace", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-download-root-" });
+      const outside = yield* fs.makeTempDirectoryScoped({ prefix: "t3-download-outside-" });
+      const outsideFile = path.join(outside, "private.docx");
+      yield* fs.writeFileString(outsideFile, "outside");
+      yield* fs.makeDirectory(path.join(root, "folder"));
+      yield* fs.symlink(outsideFile, path.join(root, "link.docx"));
+      for (const filePath of ["folder", "link.docx", outsideFile, "missing.docx"]) {
+        const result = yield* issueAssetUrl({
+          resource: {
+            _tag: "workspace-file",
+            threadId: ThreadId.make("thread-1"),
+            path: filePath,
+            disposition: "attachment",
+          },
+          workspaceRoot: root,
+        }).pipe(Effect.result);
+        expect(result._tag).toBe("Failure");
+      }
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect("issues exact URLs for media and browser documents outside the workspace", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

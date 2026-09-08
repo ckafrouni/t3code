@@ -1,3 +1,6 @@
+import { issueWorkspaceExport } from "./assets/WorkspaceExports.ts";
+import { issueWorkspaceUpload } from "./assets/WorkspaceUploads.ts";
+import { PortForwarding } from "./preview/PortForwarding.ts";
 import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
@@ -11,6 +14,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -523,6 +527,7 @@ const makeWsRpcLayer = (
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const previewManager = yield* PreviewManager.PreviewManager;
+      const portForwarding = yield* PortForwarding;
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const providerService = yield* ProviderService.ProviderService;
@@ -2406,13 +2411,19 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "workspace" },
           ),
+        [WS_METHODS.workspaceExportPrepare]: (input) => issueWorkspaceExport(input),
+        [WS_METHODS.workspaceUploadPrepare]: (input) => issueWorkspaceUpload(input),
+        [WS_METHODS.workspaceUploadRefresh]: (input) => workspaceEntries.refresh(input.cwd),
         [WS_METHODS.assetsCreateUrl]: (input) =>
           observeRpcEffect(
             WS_METHODS.assetsCreateUrl,
             Effect.gen(function* () {
+              const path = yield* Path.Path;
+              // An absolute media path can be linked from a thread on another environment.
               if (
                 input.resource._tag === "attachment" ||
-                input.resource._tag === "native-app-icon"
+                input.resource._tag === "native-app-icon" ||
+                (input.resource._tag === "media-file" && path.isAbsolute(input.resource.path))
               ) {
                 return yield* issueAssetUrl({ resource: input.resource });
               }
@@ -2651,6 +2662,22 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "terminal" },
           ),
+        [WS_METHODS.previewForwardPort]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.previewForwardPort,
+            portForwarding.execute(
+              input,
+              currentSession.sessionId,
+              currentSession.expiresAt
+                ? DateTime.toEpochMillis(currentSession.expiresAt)
+                : undefined,
+            ),
+            { "rpc.aggregate": "preview" },
+          ),
+        [WS_METHODS.previewForwardedPorts]: () =>
+          observeRpcStream(WS_METHODS.previewForwardedPorts, portForwarding.snapshots, {
+            "rpc.aggregate": "preview",
+          }),
         [WS_METHODS.previewOpen]: (input) =>
           observeRpcEffect(WS_METHODS.previewOpen, previewManager.open(input), {
             "rpc.aggregate": "preview",
@@ -2921,6 +2948,7 @@ const makeWsRpcLayer = (
 export const websocketRpcRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
     const previewAutomationBroker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
+    const portForwarding = yield* PortForwarding;
     const baseServerSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const config = yield* ServerConfig.ServerConfig;
     const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
@@ -2987,6 +3015,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               workspaceLanguage,
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
+              Layer.provide(Layer.succeed(PortForwarding, portForwarding)),
               Layer.provide(AgentSessionScanner.layer),
               Layer.provide(ProviderMaintenanceRunner.layer),
               Layer.provide(Layer.succeed(ServerSelfUpdate.ServerSelfUpdate, serverSelfUpdate)),
