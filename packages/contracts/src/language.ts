@@ -113,7 +113,7 @@ export const LanguageResult = Schema.Union([
 ]);
 export type LanguageResult = typeof LanguageResult.Type;
 
-export class LanguageServiceError extends Schema.TaggedErrorClass<LanguageServiceError>()(
+export class LanguageServiceError extends Schema.TaggedError<LanguageServiceError>()(
   "LanguageServiceError",
   { message: Schema.String, resync: Schema.Boolean },
 ) {}

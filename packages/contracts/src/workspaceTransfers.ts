@@ -22,7 +22,7 @@ export const WorkspaceUploadResult = Schema.Union([
   }),
   Schema.TaggedStruct("skipped", {}),
 ]);
-export class WorkspaceTransferError extends Schema.TaggedErrorClass<WorkspaceTransferError>()(
+export class WorkspaceTransferError extends Schema.TaggedError<WorkspaceTransferError>()(
   "WorkspaceTransferError",
   { message: Schema.String },
 ) {}

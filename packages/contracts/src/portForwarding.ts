@@ -34,9 +34,6 @@ export const PortForwardResult = Schema.Struct({
 });
 export type PortForwardResult = typeof PortForwardResult.Type;
 
-export class PortForwardError extends Schema.TaggedErrorClass<PortForwardError>()(
-  "PortForwardError",
-  {
-    message: Schema.String,
-  },
-) {}
+export class PortForwardError extends Schema.TaggedError<PortForwardError>()("PortForwardError", {
+  message: Schema.String,
+}) {}
