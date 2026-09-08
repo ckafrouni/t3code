@@ -1,3 +1,4 @@
+import { startFileDrag, resolveFileDrag, cancelFileDrag } from "./methods/fileDrag.ts";
 import * as Effect from "effect/Effect";
 
 import * as DesktopIpc from "./DesktopIpc.ts";
@@ -54,6 +55,9 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   const ipc = yield* DesktopIpc.DesktopIpc;
   yield* PreviewIpc.installPreviewEventForwarding();
 
+  yield* ipc.handle(startFileDrag);
+  yield* ipc.handle(resolveFileDrag);
+  yield* ipc.handle(cancelFileDrag);
   yield* ipc.handle(AppActivationIpc.setReady);
   yield* ipc.handle(AppActivationIpc.complete);
 

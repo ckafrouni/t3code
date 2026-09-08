@@ -1,4 +1,9 @@
 import type {
+  DesktopFileDragInput,
+  DesktopFileDragResolveInput,
+  DesktopFileDragEvent,
+} from "./workspaceTransfers.ts";
+import type {
   VcsCreateRefInput,
   VcsCreateRefResult,
   VcsCreateWorktreeInput,
@@ -1060,6 +1065,10 @@ export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
 export interface DesktopBridge {
+  startFileDrag?: (input: typeof DesktopFileDragInput.Type) => Promise<void>;
+  resolveFileDrag?: (input: typeof DesktopFileDragResolveInput.Type) => Promise<void>;
+  cancelFileDrag?: (id: string) => Promise<void>;
+  onFileDragEvent?: (listener: (event: DesktopFileDragEvent) => void) => () => void;
   getAppBranding: () => DesktopAppBranding | null;
   /** The desktop client's OS platform, read from Electron's preload process. */
   getClientPlatform?: () => string;

@@ -21,7 +21,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
-import { Code2, Eye, FolderTree, Globe2 } from "lucide-react";
+import { Code2, DownloadIcon, Eye, FolderTree, Globe2 } from "lucide-react";
 import * as Schema from "effect/Schema";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -43,6 +43,7 @@ import { isPreviewSupportedInRuntime } from "~/previewStateStore";
 import { isAbsolutePath, resolvePathLinkTarget } from "~/terminal-links";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Toggle } from "~/components/ui/toggle";
+import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
@@ -54,6 +55,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 
 import FileBrowserPanel from "./FileBrowserPanel";
+import { useDownloadWorkspaceFile } from "./useDownloadWorkspaceFile";
 import { FileBreadcrumbs } from "./FileBreadcrumbs";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
 import {
@@ -1044,6 +1046,7 @@ export default function FilePreviewPanel({
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const remoteOpenState = useRemoteOpenState(environmentId);
   const environmentHttpBaseUrl = useEnvironmentHttpBaseUrl(environmentId);
+  const downloadWorkspaceFile = useDownloadWorkspaceFile(threadRef);
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
     reportFailure: false,
   });
@@ -1236,6 +1239,23 @@ export default function FilePreviewPanel({
               compact
               enableShortcut={false}
             />
+          ) : null}
+          {!isHostFile ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Download file"
+                    onClick={() => void downloadWorkspaceFile(relativePath)}
+                  >
+                    <DownloadIcon className="size-3.5" />
+                  </Button>
+                }
+              />
+              <TooltipPopup>Download saved file</TooltipPopup>
+            </Tooltip>
           ) : null}
           {canToggleRendered ? (
             <Tooltip>
@@ -1452,6 +1472,7 @@ export default function FilePreviewPanel({
               selectedPathRevealId={revealRequestId}
               onOpenFile={onOpenFile}
               workspaceMutationId={workspaceMutationId}
+              onDownloadFile={downloadWorkspaceFile}
               {...(relativePath && !isMedia && !isPdf
                 ? { onRefreshSelectedFile: file.refresh }
                 : {})}

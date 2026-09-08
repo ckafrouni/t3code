@@ -121,3 +121,20 @@ describe("makeComposerMentionDragHandlers", () => {
     expect(log).toEqual(["active:false"]);
   });
 });
+
+it("keeps native file promises as workspace mentions inside the composer", async () => {
+  const { setNativeFileDrag, clearNativeFileDrag } = await import("~/lib/nativeFileDragState");
+  const { host, log } = makeHost();
+  const handlers = makeComposerMentionDragHandlers(host);
+  const { event } = makeDragEvent({ types: ["Files"], mention: "" });
+  setNativeFileDrag("native-test", "[report.docx](docs/report.docx)");
+  try {
+    handlers.onDragOver(event);
+    expect(event.dataTransfer.dropEffect).toBe("copy");
+    handlers.onDrop(event);
+    expect(log).toContain("insert:[report.docx](docs/report.docx) ");
+  } finally {
+    clearNativeFileDrag("native-test");
+  }
+  expect(dataTransferHasComposerMention(["Files"])).toBe(false);
+});

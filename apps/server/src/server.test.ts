@@ -5663,6 +5663,42 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("shares local port forwards across websocket sessions", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const first = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.previewForwardPort]({ _tag: "start", port: 3000, protocol: "http" }),
+        ),
+      );
+      assert.equal(first.forwards.length, 1);
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const snapshot = yield* client[WS_METHODS.previewForwardedPorts]({}).pipe(
+              Stream.runHead,
+              Effect.map(Option.getOrThrow),
+            );
+            assert.deepEqual(snapshot.forwards, first.forwards);
+            const opened = yield* client[WS_METHODS.previewForwardPort]({
+              _tag: "open",
+              port: 3000,
+            });
+            assert.include(opened.openUrl, "/__t3_preview/open#");
+            assert.notProperty(snapshot, "openUrl");
+            assert.equal(new URL(snapshot.forwards[0]!.previewUrl).hash, "");
+            const stopped = yield* client[WS_METHODS.previewForwardPort]({
+              _tag: "stop",
+              port: 3000,
+            });
+            assert.deepEqual(stopped.forwards, []);
+          }),
+        ),
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("shares one preview automation broker across websocket sessions", () =>
     Effect.scoped(
       Effect.gen(function* () {

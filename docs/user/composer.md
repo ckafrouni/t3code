@@ -122,6 +122,28 @@ File links refer to the environment's machine, including when you connect remote
 Previews use the original file, even outside the workspace. Moving or deleting it
 can break the preview, so save a copy if you need to keep it.
 
+## Download workspace files
+
+On web and desktop, right-click a file in the Files tab and choose **Download**
+to save it on your device. The file viewer also has a download button. Downloads
+use the saved file from the selected environment, including remote environments.
+In the Mac desktop app, drag files or folders from Files into Finder to copy them
+onto your Mac. Dragging into the composer still inserts workspace references.
+In a web browser or on other desktop platforms, use Download; archive folders first.
+
+## Upload workspace files
+
+Drop files or folders onto the Files panel to copy them into the selected
+environment. Drop onto a folder to use it as the destination. Nested folders and
+empty directories are preserved. Existing names prompt you to replace files,
+merge folders, keep both, or skip. Transfers show progress and can be cancelled
+or retried; retry resumes with the first unfinished file.
+
+Uploads are available on web and desktop, including remote connections. Each
+file may be up to 2 GB; one drop may contain up to 10 GB and 10,000 entries.
+Repository metadata (`.git`) is excluded. Folders dragged out of a remote
+environment cannot contain symbolic links.
+
 ## Files outside the workspace
 
 Follow an agent's file link to read a report or other file outside the workspace.

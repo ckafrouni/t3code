@@ -1,5 +1,6 @@
 import type {
   DesktopBridge,
+  DesktopFileDragEvent,
   DesktopPreviewPointerEvent,
   DesktopPreviewRecordingFrame,
   DesktopPreviewTabState,
@@ -31,6 +32,15 @@ function unwrapEnsureSshEnvironmentResult(result: unknown) {
 }
 
 contextBridge.exposeInMainWorld("desktopBridge", {
+  startFileDrag: (input) => ipcRenderer.invoke("desktop:files:start-drag", input),
+  resolveFileDrag: (input) => ipcRenderer.invoke("desktop:files:resolve-drag", input),
+  cancelFileDrag: (id) => ipcRenderer.invoke("desktop:files:cancel-drag", id),
+  onFileDragEvent: (listener) => {
+    const handle = (_event: Electron.IpcRendererEvent, event: DesktopFileDragEvent) =>
+      listener(event);
+    ipcRenderer.on("desktop:files:drag-event", handle);
+    return () => ipcRenderer.removeListener("desktop:files:drag-event", handle);
+  },
   getAppBranding: () => {
     const result = ipcRenderer.sendSync(IpcChannels.GET_APP_BRANDING_CHANNEL);
     if (typeof result !== "object" || result === null) {
