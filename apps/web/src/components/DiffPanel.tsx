@@ -353,11 +353,14 @@ export default function DiffPanel({
       ? (state.branchBaseRefByThreadKey[scopedThreadKey(routeThreadRef)] ?? null)
       : null,
   );
+  // Follow the preview onto the environment cwd when the thread cwd was rejected.
+  const commitsCwd =
+    shouldRetryBranchDiffAtEnvironmentCwd && serverConfig ? serverConfig.cwd : activeCwd;
   const branchCommits = useEnvironmentQuery(
-    isGitRepo && activeThread && activeCwd
+    isGitRepo && activeThread && commitsCwd
       ? reviewEnvironment.commits({
           environmentId: activeThread.environmentId,
-          input: { cwd: activeCwd, ...(commitsBaseRef ? { baseRef: commitsBaseRef } : {}) },
+          input: { cwd: commitsCwd, ...(commitsBaseRef ? { baseRef: commitsBaseRef } : {}) },
         })
       : null,
   );

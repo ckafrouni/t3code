@@ -1766,6 +1766,39 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("keeps separator characters inside commit subjects", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* git(cwd, ["checkout", "-b", "feature/odd-subject"]);
+        yield* git(cwd, ["commit", "--allow-empty", "-m", "odd\x1fsub\x1eject"]);
+
+        const { commits } = yield* driver.listReviewCommits({ cwd, baseRef: initialBranch });
+        assert.deepStrictEqual(
+          commits.map((commit) => commit.subject),
+          ["odd\x1fsub\x1eject"],
+        );
+        assert.match(commits[0]!.authoredAt, /^\d{4}-\d{2}-\d{2}T/);
+      }),
+    );
+
+    it.effect("treats an option-like base ref as a revision", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const target = `${cwd}/injected`;
+
+        const { commits } = yield* driver.listReviewCommits({
+          cwd,
+          baseRef: `--output=${target}`,
+        });
+        assert.deepStrictEqual(commits, []);
+        assert.isFalse(NodeFS.existsSync(`${target}..HEAD`));
+      }),
+    );
+
     it.effect("diffs a root commit against the empty tree", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();

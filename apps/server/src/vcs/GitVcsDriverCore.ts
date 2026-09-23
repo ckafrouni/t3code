@@ -2666,12 +2666,15 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const result = yield* executeGit(
       "GitVcsDriver.listReviewCommits",
       cwd,
-      // Unit and record separators cannot appear in a subject.
+      // Records end in NUL, which a subject cannot hold. The subject goes last so any
+      // separator inside it stays part of the subject.
       [
         "log",
+        "-z",
         "--no-color",
-        "--format=%H%x1f%s%x1f%aI%x1e",
+        "--format=%H%x1f%aI%x1f%s",
         `--max-count=${REVIEW_COMMITS_LIMIT}`,
+        "--end-of-options",
         `${baseRef}..HEAD`,
         "--",
       ],
@@ -2679,9 +2682,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     );
     if (result.exitCode !== 0) return { commits: [] };
     return {
-      commits: result.stdout.split("\x1e").flatMap((record) => {
-        const [sha, subject = "", authoredAt = ""] = record.trim().split("\x1f");
-        return sha ? [{ sha, subject, authoredAt }] : [];
+      commits: result.stdout.split("\0").flatMap((record) => {
+        const [sha, authoredAt = "", ...subject] = record.trim().split("\x1f");
+        return sha ? [{ sha, subject: subject.join("\x1f"), authoredAt }] : [];
       }),
     };
   });
@@ -2715,7 +2718,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const result = yield* executeGit(
       "GitVcsDriver.getReviewDiffFileContents.revision",
       input.cwd,
-      ["show", `${revision}:${relativePath}`],
+      ["show", "--end-of-options", `${revision}:${relativePath}`],
       { maxOutputBytes: REVIEW_DIFF_FILE_MAX_OUTPUT_BYTES },
     );
     if (result.stdout.includes("\0")) {
