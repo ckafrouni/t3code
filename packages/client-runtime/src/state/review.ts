@@ -18,6 +18,11 @@ export function createReviewEnvironmentAtoms<R, E>(
       tag: WS_METHODS.reviewGetDiffPreview,
       staleTimeMs: 5_000,
     }),
+    commits: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:review:commits",
+      tag: WS_METHODS.reviewListCommits,
+      staleTimeMs: 5_000,
+    }),
     diffFileContents: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:review:diff-file-contents",
       tag: WS_METHODS.reviewGetDiffFileContents,

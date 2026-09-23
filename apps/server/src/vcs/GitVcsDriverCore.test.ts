@@ -1000,6 +1000,145 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
     );
   });
 
+  describe("review diff scopes", () => {
+    it.effect("combines committed and uncommitted work against the merge base", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const mergeBase = (yield* git(cwd, ["rev-parse", "HEAD"])).trim();
+        yield* git(cwd, ["checkout", "-b", "feature/all"]);
+        yield* writeTextFile(cwd, "committed.ts", "committed\n");
+        yield* git(cwd, ["add", "committed.ts"]);
+        yield* git(cwd, ["commit", "-m", "add committed"]);
+        yield* writeTextFile(cwd, "README.md", "# dirty\n");
+        yield* writeTextFile(cwd, "untracked.ts", "untracked\n");
+
+        const preview = yield* driver.getReviewDiffPreview({
+          cwd,
+          baseRef: initialBranch,
+          source: "all",
+        });
+
+        assert.strictEqual(preview.sources.length, 1);
+        const [all] = preview.sources;
+        assert.strictEqual(all?.kind, "all");
+        assert.strictEqual(all?.baseRef, mergeBase);
+        assert.include(all?.diff, "+++ b/committed.ts");
+        assert.include(all?.diff, "+++ b/README.md");
+        assert.include(all?.diff, "+++ b/untracked.ts");
+
+        const contents = yield* driver.getReviewDiffFileContents(
+          makeReviewDiffFileContentsInput(cwd, { sourceKind: "all", baseRef: mergeBase }),
+        );
+        assert.deepStrictEqual(contents, { oldContents: "# test\n", newContents: "# dirty\n" });
+      }),
+    );
+
+    it.effect("includes untracked files across the repository when asked from a subfolder", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const pathService = yield* Path.Path;
+        yield* writeTextFile(cwd, "apps/server/keep.ts", "keep\n");
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "add server"]);
+        yield* writeTextFile(cwd, "apps/server/new-here.ts", "here\n");
+        yield* writeTextFile(cwd, "apps/web/new-there.ts", "there\n");
+
+        const preview = yield* driver.getReviewDiffPreview({
+          cwd: pathService.join(cwd, "apps", "server"),
+          baseRef: initialBranch,
+          source: "all",
+        });
+
+        const diff = preview.sources[0]?.diff;
+        assert.include(diff, "+++ b/apps/server/new-here.ts");
+        assert.include(diff, "+++ b/apps/web/new-there.ts");
+      }),
+    );
+
+    it.effect("returns only uncommitted work when asked for the working tree", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* writeTextFile(cwd, "README.md", "# dirty\n");
+
+        const preview = yield* driver.getReviewDiffPreview({
+          cwd,
+          baseRef: initialBranch,
+          source: "working-tree",
+        });
+
+        assert.deepStrictEqual(
+          preview.sources.map((source) => source.kind),
+          ["working-tree"],
+        );
+        assert.include(preview.sources[0]?.diff, "+# dirty");
+      }),
+    );
+
+    it.effect("lists branch commits newest first and diffs one against its parent", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* git(cwd, ["checkout", "-b", "feature/commits"]);
+        yield* writeTextFile(cwd, "first.ts", "first\n");
+        yield* git(cwd, ["add", "first.ts"]);
+        yield* git(cwd, ["commit", "-m", "add first"]);
+        yield* writeTextFile(cwd, "second.ts", "second\n");
+        yield* git(cwd, ["add", "second.ts"]);
+        yield* git(cwd, ["commit", "-m", "add second"]);
+
+        const listed = yield* driver.listReviewCommits({ cwd, baseRef: initialBranch });
+        assert.strictEqual(listed.baseRef, initialBranch);
+        assert.deepStrictEqual(
+          listed.commits.map((commit) => commit.subject),
+          ["add second", "add first"],
+        );
+        const first = listed.commits[1]!;
+
+        const preview = yield* driver.getReviewDiffPreview({
+          cwd,
+          source: { commit: first.sha.slice(0, 7) },
+        });
+        const [commit] = preview.sources;
+        assert.strictEqual(commit?.kind, "commit");
+        assert.strictEqual(commit?.headRef, first.sha);
+        assert.include(commit?.diff, "+++ b/first.ts");
+        assert.notInclude(commit?.diff, "second.ts");
+
+        const contents = yield* driver.getReviewDiffFileContents(
+          makeReviewDiffFileContentsInput(cwd, {
+            sourceKind: "commit",
+            changeType: "new",
+            baseRef: commit!.baseRef,
+            headRef: first.sha,
+            oldPath: "first.ts",
+            newPath: "first.ts",
+          }),
+        );
+        assert.deepStrictEqual(contents, { oldContents: "", newContents: "first\n" });
+      }),
+    );
+
+    it.effect("diffs a root commit against the empty tree", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const root = (yield* git(cwd, ["rev-parse", "HEAD"])).trim();
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd, source: { commit: root } });
+
+        assert.include(preview.sources[0]?.diff, "+++ b/README.md");
+      }),
+    );
+  });
+
   describe("repository status", () => {
     it.effect("reports non-repository directories without failing", () =>
       Effect.gen(function* () {
